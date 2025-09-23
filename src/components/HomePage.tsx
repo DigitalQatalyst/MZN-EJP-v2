@@ -1,63 +1,58 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
-import { BookOpen, DollarSign, Briefcase } from 'lucide-react';
-export const HomePage: React.FC = () => {
-  const navigate = useNavigate();
-  const marketplaces = [{
-    id: 'courses',
-    title: 'Course Marketplace',
-    description: 'Discover and enroll in courses tailored for SMEs to help grow your business',
-    icon: <BookOpen size={24} className="text-white" />,
-    path: '/marketplace/courses',
-    gradientFrom: 'from-blue-600',
-    gradientTo: 'to-indigo-600'
-  }, {
-    id: 'financial',
-    title: 'Financial Services',
-    description: 'Access financial products and services to support your business growth',
-    icon: <DollarSign size={24} className="text-white" />,
-    path: '/marketplace/financial',
-    gradientFrom: 'from-emerald-600',
-    gradientTo: 'to-teal-600'
-  }, {
-    id: 'non-financial',
-    title: 'Business Services',
-    description: 'Find professional services to support and grow your business',
-    icon: <Briefcase size={24} className="text-white" />,
-    path: '/marketplace/non-financial',
-    gradientFrom: 'from-purple-600',
-    gradientTo: 'to-pink-600'
-  }];
-  return <div className="container mx-auto px-4 py-12">
-      <div className="text-center mb-12">
-        <h1 className="text-3xl md:text-4xl font-bold text-gray-900 mb-4">
-          Business Growth Marketplace
-        </h1>
-        <p className="text-lg text-gray-600 max-w-2xl mx-auto">
-          Discover resources, services, and support to help your business thrive
-        </p>
+import React, { useEffect, useState } from 'react';
+import { Header } from '../components/Header';
+import { Footer } from '../components/Footer';
+import HeroSection from './HeroSection';
+import ProofAndTrust from './ProofAndTrust';
+import EnterpriseStages from './EnterpriseStages';
+import Home from './Home';
+import KnowledgeHub from './KnowledgeHub';
+import CallToAction from './CallToAction';
+
+const HomePage: React.FC = () => {
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Simulate page loading
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setIsLoading(false);
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (isLoading) {
+    return (
+      <div className="fixed inset-0 bg-gradient-to-r from-blue-900 to-indigo-900 flex items-center justify-center z-50">
+        <div className="text-center">
+          <div className="w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
+          <h2 className="text-white text-xl font-bold">
+            Loading Enterprise Journey Platform
+          </h2>
+          <p className="text-blue-200 mt-2">
+            Your gateway to business growth in Abu Dhabi
+          </p>
+        </div>
       </div>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-8 max-w-5xl mx-auto">
-        {marketplaces.map(marketplace => <div key={marketplace.id} className={`bg-gradient-to-br ${marketplace.gradientFrom} ${marketplace.gradientTo} rounded-xl shadow-lg overflow-hidden hover:shadow-xl transition-shadow duration-300 cursor-pointer`} onClick={() => navigate(marketplace.path)}>
-            <div className="p-6 flex flex-col h-full">
-              <div className="bg-white/20 w-12 h-12 rounded-full flex items-center justify-center mb-4">
-                {marketplace.icon}
-              </div>
-              <h2 className="text-xl font-bold text-white mb-2">
-                {marketplace.title}
-              </h2>
-              <p className="text-white/90 mb-6 flex-grow">
-                {marketplace.description}
-              </p>
-              <button className="mt-auto bg-white text-gray-800 px-4 py-2 rounded-md font-medium hover:bg-gray-100 transition-colors w-full" onClick={e => {
-            e.stopPropagation();
-            navigate(marketplace.path);
-          }}>
-                Explore Now
-              </button>
-            </div>
-          </div>)}
-      </div>
-    </div>;
+    );
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col bg-gray-50">
+      <Header 
+        toggleSidebar={() => setSidebarOpen(!sidebarOpen)} 
+        sidebarOpen={sidebarOpen} 
+      />
+      <main className="flex-grow">
+        <HeroSection />
+        <ProofAndTrust />
+        <EnterpriseStages />
+        <Home />
+        <KnowledgeHub graphqlEndpoint={null} />
+        <CallToAction />
+      </main>
+      <Footer isLoggedIn={false} />
+    </div>
+  );
 };
+
 export default HomePage;

@@ -355,8 +355,8 @@ export const marketplaceConfig: Record<string, MarketplaceConfig> = {
       label: 'Amount',
       icon: <DollarSign size={18} className="mr-2" />
     }, {
-      key: 'duration',
-      label: 'Repayment Term',
+      key: 'processingTime',
+      label: 'Processing Time',
       icon: <Calendar size={18} className="mr-2" />
     }, {
       key: 'eligibility',
