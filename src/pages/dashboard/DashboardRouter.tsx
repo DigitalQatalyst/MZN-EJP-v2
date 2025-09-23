@@ -4,7 +4,7 @@ import DashboardLayout from './DashboardLayout';
 import { DocumentsPage } from './documents';
 import { Overview } from './overview';
 import { ServiceRequestsPage } from './serviceRequests';
-import { isOnboardingCompleted } from '../../services/DataverseService';
+import { checkOnboardingStatus } from '../../services/onboardingService'; // CHANGED: Use your service
 import { OnboardingForm } from './onboarding/OnboardingForm';
 import { ReportsPage } from './reportingObligations/ReportsPage';
 import { AllReceivedReportsPage } from './reportingObligations/AllReceivedReportsPage';
@@ -17,7 +17,7 @@ import { ChatInterface } from '../../components/Chat/ChatInterface';
 
 // Main Dashboard Router Component
 const DashboardRouter = () => {
-    const [onboardingComplete, setOnboardingComplete] = useState(false);
+    const [onboardingComplete, setOnboardingComplete] = useState<boolean | null>(null); // CHANGED: null = loading
     const [isOpen, setIsOpen] = useState(true);
     const [isLoggedIn, setIsLoggedIn] = useState(true);
     const location = useLocation();
@@ -26,43 +26,49 @@ const DashboardRouter = () => {
     useEffect(() => {
         const checkOnboarding = async () => {
             try {
-                const completed = await isOnboardingCompleted();
-                setOnboardingComplete(!!completed);
-                if (!completed) {
-                    if (!location.pathname.includes('/dashboard/onboarding')) {
-                        navigate('/dashboard/onboarding', { replace: true });
-                    }
+                console.log('🔍 Checking onboarding status...');
+                const completed = await checkOnboardingStatus(); // CHANGED: Use your function
+                console.log('✅ Onboarding status:', completed);
+                
+                setOnboardingComplete(completed);
+                
+                if (!completed && !location.pathname.includes('/dashboard/onboarding')) {
+                    navigate('/dashboard/onboarding', { replace: true });
                 }
             } catch (error) {
                 console.error('Error checking onboarding status:', error);
-            } finally {
-                // no-op
+                // Fallback: assume not completed to be safe
+                setOnboardingComplete(false);
             }
         };
+        
         checkOnboarding();
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
+    }, [location.pathname, navigate]);
 
     // If onboarding is complete and user is on onboarding route, send to overview
     useEffect(() => {
-        if (onboardingComplete && location.pathname.includes('/dashboard/onboarding')) {
+        if (onboardingComplete === true && location.pathname.includes('/dashboard/onboarding')) {
             navigate('/dashboard/overview', { replace: true });
         }
     }, [onboardingComplete, location.pathname, navigate]);
 
     const handleOnboardingComplete = () => {
+        console.log('🎉 Onboarding completed!');
         setOnboardingComplete(true);
         navigate('/dashboard/overview', { replace: true });
     };
 
-    // useEffect(() => {
-    //     const token = localStorage.getItem('token');
-    //     if (token) {
-    //         setIsLoggedIn(true);
-    //     } else {
-    //         navigate('/', { replace: true });
-    //     }
-    // }, [navigate]);
+    // LOADING STATE: Show loading spinner while checking status
+    if (onboardingComplete === null) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+                <div className="text-center">
+                    <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-600 mx-auto mb-4"></div>
+                    <p className="text-gray-600">Loading...</p>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <DashboardLayout

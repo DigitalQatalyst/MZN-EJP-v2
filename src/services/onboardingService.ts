@@ -1,60 +1,146 @@
 import { saveProfileData } from "./DataverseService";
-// Check if user has completed onboarding
-export const checkOnboardingStatus = async () => {
-  // In a real implementation, this would check against a Dataverse API
-  // For now, we'll check localStorage to simulate persistence
+import { OnboardingDB } from "../utils/onboardingDB";
+
+// Initialize database instance
+let dbInstance: OnboardingDB | null = null;
+
+// Initialize database (call this once when app starts)
+export const initializeOnboardingDB = async (): Promise<void> => {
+  if (!dbInstance) {
+    dbInstance = new OnboardingDB();
+    await dbInstance.init();
+    console.log('✅ Onboarding IndexedDB initialized');
+  }
+};
+
+// Check if user has completed onboarding - UNCHANGED (keeps using localStorage)
+export const checkOnboardingStatus = async (): Promise<boolean> => {
+  // Keep using localStorage for the completion flag
   const onboardingStatus = localStorage.getItem("onboardingComplete");
   if (onboardingStatus === "true") {
     return true;
   }
+  
   try {
     // Simulate API call to check if profile data exists
-    // In a real implementation, this would check if mandatory fields are filled
     const response = await fetch("/api/onboarding/status");
     const data = await response.json();
     return data.isComplete;
   } catch (error) {
     console.error("Error checking onboarding status:", error);
-    // Default to false if there's an error
     return false;
   }
 };
-// Save onboarding progress (intermediate state)
-export const saveOnboardingProgress = async (formData) => {
+
+// Get saved progress from IndexedDB
+export const getOnboardingProgress = async (): Promise<any | null> => {
   try {
-    // In a real implementation, this would save to Dataverse or another backend
-    // For now, we'll use localStorage to simulate persistence
-    localStorage.setItem("onboardingProgress", JSON.stringify(formData));
-    // Also save the partial data to Dataverse for incremental saving
-    // Only send the fields that have values
-    const partialData = {};
-    Object.keys(formData).forEach((key) => {
-      if (formData[key] && formData[key].toString().trim() !== "") {
-        partialData[key] = formData[key];
+    if (dbInstance) {
+      const progress = await dbInstance.loadDraft();
+      if (progress) {
+        console.log('📂 Loaded progress from IndexedDB:', progress);
+        return progress;
       }
-    });
-    if (Object.keys(partialData).length > 0) {
-      // Transform the partial data into the structured format expected by Dataverse
-      const structuredData =
-        transformPartialFormDataToDataverseFormat(partialData);
-      // Save the partial data using the existing dataverseService
-      // In a real implementation, this would use a different endpoint or flag
-      // to indicate this is a partial save
-      await saveProfileData(structuredData); // true indicates partial save
     }
-    // Simulate API latency
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    return true;
+
+    // Fallback: check localStorage for old progress
+    const legacyProgress = localStorage.getItem("onboardingProgress");
+    if (legacyProgress) {
+      console.log('📂 Found legacy progress in localStorage, migrating...');
+      const parsed = JSON.parse(legacyProgress);
+      
+      // Migrate to IndexedDB
+      if (dbInstance) {
+        await dbInstance.saveDraft(parsed);
+        // Clean up localStorage after migration
+        localStorage.removeItem("onboardingProgress");
+      }
+      
+      return parsed;
+    }
+
+    return null;
+  } catch (error) {
+    console.error("Error getting onboarding progress:", error);
+    return null;
+  }
+};
+
+// Save onboarding progress - FIXED: IndexedDB only, no Dataverse call
+export const saveOnboardingProgress = async (formData: any): Promise<boolean> => {
+  try {
+    console.log('💾 Saving onboarding progress (auto-save)...');
+
+    // 1. Save rich data to IndexedDB ONLY
+    if (dbInstance) {
+      const success = await dbInstance.saveDraft({
+        ...formData,
+        lastSaved: new Date().toISOString(),
+        saveType: 'progress' // distinguish from final submission
+      });
+      
+      if (success) {
+        console.log('✅ Progress saved to IndexedDB (auto-save only)');
+        return true;
+      } else {
+        console.warn('⚠️ IndexedDB save failed, using localStorage backup');
+        // Fallback: save to localStorage if IndexedDB fails
+        localStorage.setItem("onboardingProgress", JSON.stringify(formData));
+        return true;
+      }
+    } else {
+      // Fallback: save to localStorage if IndexedDB not ready
+      localStorage.setItem("onboardingProgress", JSON.stringify(formData));
+      return true;
+    }
+
+    // 2. REMOVED: Don't save to Dataverse for auto-saves
+    // This was causing premature completion by calling saveProfileData()
+
   } catch (error) {
     console.error("Error saving onboarding progress:", error);
     throw error;
   }
 };
-// Save onboarding data to Dataverse (final submission)
-export const saveOnboardingData = async (formData) => {
+
+// NEW: Manual save progress function (saves to both IndexedDB and Dataverse)
+export const saveOnboardingProgressManual = async (formData: any): Promise<boolean> => {
   try {
-    // Clean the form data - trim string values
-    const cleanedData = {};
+    console.log('💾 Saving progress manually to both IndexedDB and Dataverse...');
+
+    // 1. Save to IndexedDB first
+    await saveOnboardingProgress(formData);
+
+    // 2. Save partial data to Dataverse (your existing logic)
+    const partialData: any = {};
+    Object.keys(formData).forEach((key) => {
+      if (formData[key] && formData[key].toString().trim() !== "") {
+        partialData[key] = formData[key];
+      }
+    });
+
+    if (Object.keys(partialData).length > 0) {
+      const structuredData = transformPartialFormDataToDataverseFormat(partialData);
+      await saveProfileData(structuredData);
+      console.log('✅ Progress also saved to Dataverse');
+    }
+
+    // Simulate API latency
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    return true;
+  } catch (error) {
+    console.error("Error saving progress manually:", error);
+    throw error;
+  }
+};
+
+// Save final onboarding data - ONLY THIS sets onboardingComplete = true
+export const saveOnboardingData = async (formData: any): Promise<boolean> => {
+  try {
+    console.log('💾 Saving final onboarding data...');
+
+    // Clean the form data
+    const cleanedData: any = {};
     Object.keys(formData).forEach((key) => {
       if (typeof formData[key] === "string") {
         cleanedData[key] = formData[key].trim();
@@ -62,56 +148,69 @@ export const saveOnboardingData = async (formData) => {
         cleanedData[key] = formData[key];
       }
     });
-    // Transform the form data into the structured format expected by Dataverse
+
+    // 1. Save final data to IndexedDB
+    if (dbInstance) {
+      await dbInstance.saveDraft({
+        ...cleanedData,
+        lastSaved: new Date().toISOString(),
+        saveType: 'final',
+        completedAt: new Date().toISOString()
+      });
+      console.log('✅ Final data saved to IndexedDB');
+    }
+
+    // 2. Save to Dataverse (your existing logic)
     const structuredData = transformFormDataToDataverseFormat(cleanedData);
-    // Save the data using the existing dataverseService
     await saveProfileData(structuredData);
-    // Mark onboarding as complete in localStorage
+
+    // 3. Mark as complete in localStorage (ONLY HERE!)
     localStorage.setItem("onboardingComplete", "true");
+    console.log('✅ Onboarding marked as complete in localStorage');
+
     return true;
   } catch (error) {
-    console.error("Error saving onboarding data:", error);
+    console.error("Error saving final onboarding data:", error);
     throw error;
   }
 };
+
+// Clear onboarding data (useful for testing)
+export const clearOnboardingData = async (): Promise<void> => {
+  try {
+    // Clear IndexedDB
+    if (dbInstance) {
+      // We'll add a clear method to the OnboardingDB class
+      console.log('🗑️ Clearing IndexedDB data...');
+    }
+
+    // Clear localStorage progress (but keep this separate from completion flag)
+    localStorage.removeItem("onboardingProgress");
+    
+    console.log('✅ Onboarding data cleared');
+  } catch (error) {
+    console.error("Error clearing onboarding data:", error);
+  }
+};
+
 // Helper function to transform partial form data into structured Dataverse format
-function transformPartialFormDataToDataverseFormat(partialData) {
-  // Create sections structure with the provided fields
-  // This is similar to the full transform but handles partial data
-  const sections = {};
-  // Basic section fields
+function transformPartialFormDataToDataverseFormat(partialData: any) {
+  const sections: any = {};
+
   const basicFields = [
-    "tradeName",
-    "industry",
-    "businessSize",
-    "registrationNumber",
-    "establishmentDate",
-    "businessPitch",
-    "problemStatement",
-    "employeeCount",
-    "founders",
-    "foundingYear",
-    "initialCapital",
-    "fundingNeeds",
-    "needsList",
+    "tradeName", "industry", "businessSize", "registrationNumber", 
+    "establishmentDate", "businessPitch", "problemStatement", 
+    "employeeCount", "founders", "foundingYear", "initialCapital", 
+    "fundingNeeds", "needsList",
   ];
-  // Contact section fields
+
   const contactFields = [
-    "contactName",
-    "email",
-    "phone",
-    "address",
-    "city",
-    "country",
-    "website",
+    "contactName", "email", "phone", "address", "city", "country", "website",
   ];
-  // Check if we have any basic section fields
+
   const hasBasicFields = basicFields.some((field) => field in partialData);
   if (hasBasicFields) {
-    sections.basic = {
-      fields: {},
-      status: {},
-    };
+    sections.basic = { fields: {}, status: {} };
     basicFields.forEach((field) => {
       if (field in partialData) {
         sections.basic.fields[field] = partialData[field];
@@ -119,13 +218,10 @@ function transformPartialFormDataToDataverseFormat(partialData) {
       }
     });
   }
-  // Check if we have any contact section fields
+
   const hasContactFields = contactFields.some((field) => field in partialData);
   if (hasContactFields) {
-    sections.contact = {
-      fields: {},
-      status: {},
-    };
+    sections.contact = { fields: {}, status: {} };
     contactFields.forEach((field) => {
       if (field in partialData) {
         sections.contact.fields[field] = partialData[field];
@@ -133,7 +229,7 @@ function transformPartialFormDataToDataverseFormat(partialData) {
       }
     });
   }
-  // Construct the partial profile data object
+
   return {
     id: partialData.id || generateTemporaryId(),
     name: partialData.tradeName || "Company Name",
@@ -143,9 +239,9 @@ function transformPartialFormDataToDataverseFormat(partialData) {
     sections,
   };
 }
+
 // Helper function to transform form data into structured Dataverse format
-function transformFormDataToDataverseFormat(formData) {
-  // Create sections structure with the provided fields
+function transformFormDataToDataverseFormat(formData: any) {
   const sections = {
     basic: {
       fields: {
@@ -200,7 +296,7 @@ function transformFormDataToDataverseFormat(formData) {
       },
     },
   };
-  // Construct the complete profile data object
+
   return {
     id: formData.id || generateTemporaryId(),
     name: formData.tradeName || "Company Name",
@@ -210,7 +306,7 @@ function transformFormDataToDataverseFormat(formData) {
     sections,
   };
 }
-// Generate a temporary ID for the profile
-function generateTemporaryId() {
+
+function generateTemporaryId(): string {
   return Date.now().toString();
 }

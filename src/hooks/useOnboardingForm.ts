@@ -1,6 +1,7 @@
-// hooks/useOnboardingForm.js
+// /src/hooks/useOnboardingForm.ts
 import { useState, useEffect, useRef } from "react";
 import { validateFormField } from "../utils/validation";
+import { getOnboardingProgress, initializeOnboardingDB, saveOnboardingData } from "../services/onboardingService";
 
 export function useOnboardingForm(steps, onComplete, isRevisit) {
   const [currentStep, setCurrentStep] = useState(0);
@@ -11,6 +12,7 @@ export function useOnboardingForm(steps, onComplete, isRevisit) {
   const [isEditingWelcome, setIsEditingWelcome] = useState(false);
   const [showStepsDropdown, setShowStepsDropdown] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [dbReady, setDbReady] = useState(false);
 
   const stepsDropdownRef: any = useRef(null);
 
@@ -28,22 +30,61 @@ export function useOnboardingForm(steps, onComplete, isRevisit) {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  // Load initial data
+  // Initialize IndexedDB and load data
   useEffect(() => {
     const loadData = async () => {
-      // Azure B2C claims (in real app, this would come from auth context)
-      const azureB2CClaims = {
-        tradeName: "FutureTech",
-        industry: "Information Technology",
-        companyStage: "growth",
-        contactName: "John Smith",
-        phone: "+971 50 123 4567",
-        email: "john.smith@futuretech.com",
-      };
+      try {
+        // 1. Initialize IndexedDB
+        await initializeOnboardingDB();
+        setDbReady(true);
+        console.log('✅ IndexedDB initialized in onboarding form');
 
-      // In real implementation, load from persistent storage
-      // For now, just use claims
-      setFormData(azureB2CClaims);
+        // 2. Try to restore saved progress
+        const savedProgress = await getOnboardingProgress();
+        
+        if (savedProgress) {
+          console.log('📂 Restored onboarding progress:', savedProgress);
+          
+          // Restore form data
+          setFormData(savedProgress);
+          
+          // Restore step and editing state if available
+          if (savedProgress.currentStep !== undefined) {
+            setCurrentStep(savedProgress.currentStep);
+          }
+          if (savedProgress.isEditingWelcome !== undefined) {
+            setIsEditingWelcome(savedProgress.isEditingWelcome);
+          }
+        } else {
+          // No saved progress, use default Azure B2C claims
+          console.log('📂 No saved progress, using default claims');
+          
+          const azureB2CClaims = {
+            tradeName: "FutureTech",
+            industry: "Information Technology", 
+            companyStage: "growth",
+            contactName: "John Smith",
+            phone: "+971 50 123 4567",
+            email: "john.smith@futuretech.com",
+          };
+          
+          setFormData(azureB2CClaims);
+        }
+      } catch (error) {
+        console.error('❌ Error initializing onboarding:', error);
+        
+        // Fallback to default data if IndexedDB fails
+        const fallbackData = {
+          tradeName: "FutureTech",
+          industry: "Information Technology",
+          companyStage: "growth", 
+          contactName: "John Smith",
+          phone: "+971 50 123 4567",
+          email: "john.smith@futuretech.com",
+        };
+        
+        setFormData(fallbackData);
+      }
     };
 
     loadData();
@@ -200,10 +241,10 @@ export function useOnboardingForm(steps, onComplete, isRevisit) {
       setLoading(true);
       try {
         // Save to backend (commented out for this example)
-        // await saveOnboardingData(formData);
+        await saveOnboardingData(formData);
 
         // Simulate API call
-        await new Promise((resolve) => setTimeout(resolve, 1000));
+        // await new Promise((resolve) => setTimeout(resolve, 1000));
 
         onComplete();
       } catch (error) {
@@ -265,6 +306,7 @@ export function useOnboardingForm(steps, onComplete, isRevisit) {
     isEditingWelcome,
     showStepsDropdown,
     loading,
+    dbReady, // NEW: expose database ready state
     stepsDropdownRef,
     setCurrentStep,
     setShowStepsDropdown,

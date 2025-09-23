@@ -1,5 +1,6 @@
-// hooks/useAutoSave.js
+// /src/hooks/useAutoSave.ts
 import { useState, useEffect, useRef } from "react";
+import { saveOnboardingProgress } from "../services/onboardingService";
 
 export function useAutoSave(formData, currentStep, isEditingWelcome) {
   const [autoSaving, setAutoSaving] = useState(false);
@@ -27,12 +28,18 @@ export function useAutoSave(formData, currentStep, isEditingWelcome) {
 
     setAutoSaving(true);
     try {
-      // In real app: await saveOnboardingProgress(formData);
-      await new Promise((resolve) => setTimeout(resolve, 500));
+      // NOW USING IndexedDB via the service
+      await saveOnboardingProgress({
+        ...formData,
+        currentStep,
+        isEditingWelcome,
+        autoSavedAt: new Date().toISOString()
+      });
 
       lastSavedDataRef.current = { ...formData };
       setProgressSaved(true);
 
+      console.log('💾 Auto-saved to IndexedDB:', formData);
       setTimeout(() => setProgressSaved(false), 3000);
     } catch (error) {
       console.error("Error auto-saving progress:", error);
@@ -67,7 +74,7 @@ export function useAutoSave(formData, currentStep, isEditingWelcome) {
         clearTimeout(autoSaveTimeoutRef.current);
       }
     };
-  }, [formData]);
+  }, [formData, currentStep, isEditingWelcome]);
 
   return {
     autoSaving,
